@@ -523,6 +523,252 @@ ggplot(filter(pa_veteran_c_data, !GEOID %in% c("02","72","15")), aes(fill = esti
         axis.title = element_blank())
 
 #
+# C24060
+#
+
+pa_industry <- get_acs(geography = "state",
+                        table = "C24060",
+                        summary_var = "C24060_001",
+                        geometry = TRUE)
+
+#
+
+pa_industry_data <- pa_industry %>%
+  
+  inner_join(
+    
+    vars_2016, by = c("variable" = "name")
+    
+  ) %>%
+  
+  mutate(specific = as.numeric(str_sub(variable, 8, 10))) %>%
+  
+  mutate(label = str_replace(label, "Estimate!!Total!!", "")) %>%
+  
+  filter(specific %in% c(7,13,19,31,25)) %>%
+  
+  mutate(estimate_spec = estimate,
+         estimate = estimate / summary_est) %>%
+  
+  mutate(SHORT_NAME = str_replace(NAME, " County, Pennsylvania", ""),
+         SHORT_NAME = str_replace(SHORT_NAME, " County, New York", ""),
+         SHORT_NAME = str_replace(SHORT_NAME, " County, New Jersey", ""))
+
+#
+
+ggplot(filter(pa_industry_data, specific == 25 & !GEOID %in% c("02","15","72")), aes(fill = estimate, label = NAME))+
+  geom_sf()+
+  scale_fill_viridis_c(label = scales::percent, name = "Percentage")+
+  geom_sf_text(data = filter(pa_industry_data, specific == 25 & !GEOID %in% c("02","15","72")))+
+  labs(title = "Government employees (2016 ACS)")+
+  theme(axis.text = element_blank(),
+        axis.title = element_blank(),
+        panel.background = element_rect(fill = "white", color = "#404040"), 
+        axis.ticks = element_blank())
+
+#
+#
+#
+
+similar_cities <- get_acs(geography = "county subdivision",
+                          table = "B25105",
+                          summary_var = "B25105_001",
+                          county = c("Lackawanna","Luzerne","Dauphin","Northampton","Lehigh","Erie","Berks","Lancaster","York","Blair"),
+                          state = "PA",
+                          geometry = FALSE) %>%
+  
+  filter(GEOID %in% c(4201163624, 4201302184, 4204332800, 4204924000, 4206969000, 4207141216, 4207702000, 4207706088, 4207985152, 4213387048, 4209506088))
+
+#
+
+similar_cities_data <- similar_cities %>%
+  
+  inner_join(
+    
+    vars_2016, by = c("variable" = "name")
+    
+  ) %>%
+  
+  mutate(GEOID = ifelse(GEOID == 4207706088, 4209506088, GEOID),
+         NAME = ifelse(GEOID == 4209506088, "Bethlehem city, Northampton County, Pennsylvania", NAME)) %>%
+  
+  group_by(GEOID, NAME, variable) %>%
+  
+  mutate(estimate = mean(estimate, na.rm = T),
+         summary_est = mean(summary_est, na.rm = T)) %>%
+  
+  ungroup() %>%
+  
+  select(-moe, -summary_moe) %>%
+  
+  unique() %>%
+  
+  mutate(specific = as.numeric(str_sub(variable, 8, 10))) %>%
+  
+  mutate(label = str_replace(label, "Estimate!!Median gross rent!!", ""),
+         label = str_replace(label, "Total!!", "")) %>%
+  
+  filter(!specific %in% c(2,7)) %>%
+  
+  mutate(SHORT_NAME = str_replace(NAME, "city", "/")) %>%
+  separate(SHORT_NAME, c("SHORT_NAME", "discard"), sep = "/") %>%
+  select(-discard) %>%
+  
+  inner_join(
+    
+    cs_sf %>%
+      select(GEOID, geometry), by = c("GEOID"))
+
+#
+
+ggplot(filter(similar_cities_data), aes(fill = estimate, label = SHORT_NAME))+
+  geom_sf()+
+  scale_fill_viridis_c(label = scales::percent, name = "Percentage")+
+  geom_sf_text(data = filter(similar_cities_data))+
+  facet_wrap(~SHORT_NAME, scales = "free")+
+  labs(title = "Government employees (2016 ACS)")+
+  theme(axis.text = element_blank(),
+        axis.title = element_blank(),
+        panel.background = element_rect(fill = "white", color = "#404040"), 
+        axis.ticks = element_blank())
+
+#
+
+ggplot(similar_cities_data, aes(x = label, y = estimate, fill = SHORT_NAME, label = SHORT_NAME))+
+  
+  geom_point(size = 4, shape = 21, color = "white")+
+  ggrepel::geom_label_repel()+
+  #facet_wrap(~SHORT_NAME, scales = "free_x")+
+  scale_fill_discrete(guide = F)+
+  scale_y_continuous(labels = scales::dollar)+
+  #coord_flip()+
+  labs(x = "",
+       y = "",
+       title = "Monthly rent by bedrooms (2016 ACS)")
+
+#
+
+
+similar_cities <- get_acs(geography = "county",
+                          table = "B25105",
+                          summary_var = "B25105_001",
+                          state = "PA",
+                          geometry = TRUE)
+
+#
+
+similar_cities_data <- similar_cities %>%
+  
+  inner_join(
+    
+    vars_2016, by = c("variable" = "name")
+    
+  ) %>%
+
+  group_by(GEOID, NAME, variable) %>%
+  
+  mutate(estimate = mean(estimate, na.rm = T),
+         summary_est = mean(summary_est, na.rm = T)) %>%
+  
+  ungroup() %>%
+  
+  select(-moe, -summary_moe) %>%
+  
+  unique() %>%
+  
+  mutate(specific = as.numeric(str_sub(variable, 8, 10))) %>%
+  
+  inner_join(
+    
+    get_acs(geography = "county",
+            table = "B19019",
+            summary_var = "B19019_001",
+            state = "PA",
+            geometry = FALSE) %>%
+      filter(str_sub(variable, 8, 10) == "001") %>%
+      
+      select(-moe, -summary_moe), by = c("GEOID","NAME")
+    
+  ) %>%
+  
+  mutate(estimate = (estimate.x * 12) / estimate.y) %>%
+  
+  mutate(SHORT_NAME = str_replace(NAME, "County, Pennsylvania", "/")) %>%
+  separate(SHORT_NAME, c("SHORT_NAME", "discard"), sep = "/") %>%
+  select(-discard) %>%
+  
+  inner_join(
+    
+    cs_sf %>%
+      select(GEOID, geometry), by = c("GEOID"))
+
+#
+
+ggplot(filter(similar_cities_data), aes(fill = estimate, label = SHORT_NAME))+
+  geom_sf()+
+  scale_fill_viridis_c(label = scales::percent, name = "")+
+  geom_sf_text(data = filter(similar_cities_data))+
+  labs(title = "Housing costs as % of median income (2016 ACS)")+
+  theme(axis.text = element_blank(),
+        axis.title = element_blank(),
+        panel.background = element_rect(fill = "white", color = "#404040"), 
+        axis.ticks = element_blank())
+
+#
+
+similar_cities <- get_acs(geography = "county",
+                          table = "B08014",
+                          summary_var = "B08014_001",
+                          state = "PA",
+                          geometry = TRUE)
+
+#
+
+similar_cities_data <- similar_cities %>%
+  
+  inner_join(
+    
+    vars_2016, by = c("variable" = "name")
+    
+  ) %>%
+  
+  mutate(specific = as.numeric(str_sub(variable, 8, 10))) %>%
+  
+  filter(specific > 3 & specific < 8) %>%
+  
+  group_by(GEOID, NAME) %>%
+  
+  summarize(estimate = sum(estimate),
+            summary_est = mean(summary_est)) %>%
+  
+  ungroup() %>%
+  
+  mutate(estimate = estimate / summary_est) %>%
+
+  mutate(SHORT_NAME = str_replace(NAME, "County, Pennsylvania", "/")) %>%
+  separate(SHORT_NAME, c("SHORT_NAME", "discard"), sep = "/") %>%
+  select(-discard)
+
+#
+
+ggplot(filter(similar_cities_data), aes(fill = estimate, label = SHORT_NAME))+
+  geom_sf()+
+  scale_fill_viridis_c(label = scales::percent, name = "")+
+  geom_sf_text(data = filter(similar_cities_data))+
+  labs(title = "Leave for work before 8AM (2016 ACS)")+
+  theme(axis.text = element_blank(),
+        axis.title = element_blank(),
+        panel.background = element_rect(fill = "white", color = "#404040"), 
+        axis.ticks = element_blank())
+
+#
+#
+#
+
+
+
+#
+#
 #
 #
 #
